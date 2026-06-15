@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Publigibi Slap — Campeonato de Tapas</title>
+<style>
+  :root{
+    --bg:#1a0e08; --ring:#c9962e; --hud:#ffe9c4; --good:#5dd45d;
+    --mid:#e8c33a; --low:#d6402c; --skin:#f0c39a; --accent:#ff7a3c;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:radial-gradient(circle at 50% 30%,#2a1810,#120a06);
+    color:var(--hud);min-height:100vh;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    font-family:"Courier New",monospace;padding:16px;gap:12px;
+  }
+  h1{font-size:18px;letter-spacing:.3em;text-transform:uppercase}
+  h1 b{color:var(--accent)}
+  #stage{
+    width:100%;max-width:760px;aspect-ratio:4/3;
+    border:3px solid #3a2414;border-radius:10px;background:#000;display:block;
+    box-shadow:0 0 40px rgba(201,150,46,.15);
+  }
+  .help{
+    max-width:760px;font-size:12px;line-height:1.7;color:#b59c7e;
+    border:1px solid #3a2414;border-radius:6px;padding:12px 16px;background:#160d07;
+  }
+  .help b{color:var(--hud)}
+  .btn{
+    background:#3a2414;color:var(--hud);border:1px solid #6a4424;border-radius:5px;
+    padding:9px 18px;font-family:inherit;font-size:13px;cursor:pointer;letter-spacing:.1em;
+  }
+  .btn:hover{background:#523218}
+</style>
+</head>
+<body>
+  <h1>Publigibi <b>Slap</b> — Campeonato de Tapas</h1>
+  <canvas id="stage" width="760" height="570"></canvas>
+  <button class="btn" id="restart">Recomeçar (R)</button>
+  <div class="help">
+    <b>Como jogar:</b> &nbsp;1) ← / → escolhem o lado do tapa &nbsp; 2) <b>ESPAÇO</b> trava a <b>potência</b> &nbsp;
+    3) <b>ESPAÇO</b> de novo trava a <b>mira</b> (acerte a zona dourada e o centro) &nbsp; 4) veja o resultado.<br>
+    Força = potência × precisão, com um respingo de sorte. Você tem <b>5 tapas</b> — some a maior pontuação!
+  </div>
+
+<script>
+const cv=document.getElementById('stage'), ctx=cv.getContext('2d');
+const W=cv.width, H=cv.height;
+const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+// Estados: SIDE -> POWER -> AIM -> RESULT -> (próximo) ; depois GAMEOVER
+let state, side, power, powerDir, aim, aimDir, result, shot, totalScore, anim;
+const MAX_SHOTS=5;
+
+function reset(){
+  state='SIDE'; side='right'; power=0; powerDir=1;
+  aim=0; aimDir=1; result=null; shot=1; totalScore=0; anim=0;
+}
+reset();
+
+document.getElementById('restart').onclick=reset;
+window.addEventListener('keydown',e=>{
+  const k=e.key.toLowerCase();
+  if(k==='r'){reset();return;}
+  if(['arrowleft','arrowright',' '].includes(e.key)) e.preventDefault();
+
+  if(state==='SIDE'){
+    if(e.key==='ArrowLeft') side='left';
+    else if(e.key==='ArrowRight') side='right';
+    else if(e.key===' ') state='POWER';
+  } else if(state==='POWER'){
+    if(e.key===' '){ state='AIM'; }
+  } else if(state==='AIM'){
+    if(e.key===' '){ resolveSlap(); }
+  } else if(state==='RESULT'){
+    if(e.key===' '){ nextShot(); }
+  }
+});
+
+function resolveSlap(){
+  // potência 0..1 ; mira: quão perto do centro (0.5) -> precisão
+  const p = power;                          // 0..1
+  const aimErr = Math.abs(aim-0.5)*2;       // 0 (perfeito) .. 1 (péssimo)
+  const precision = Math.max(0, 1-aimErr);  // 0..1
+  const luck = 0.9 + Math.random()*0.2;     // 0.9..1.1
+  const raw = p * (0.35 + 0.65*precision) * luck;  // mira pesa muito
+  const score = Math.round(raw*1000);
+  const distance = Math.round(raw*42);      // "metros" de voo
+  let grade='Fraco';
+  if(precision>0.95 && p>0.9) grade='NOCAUTE PERFEITO!';
+  else if(precision>0.8 && p>0.75) grade='Tapa brutal!';
+  else if(precision>0.6) grade='Bom tapa';
+  else if(precision>0.35) grade='De raspão';
+  else grade='Errou feio';
+  totalScore += score;
+  result={p,precision,score,distance,grade,luck};
+  state='RESULT'; anim=0;
+}
+
+function nextShot(){
+  if(shot>=MAX_SHOTS){ state='GAMEOVER'; return; }
+  shot++; state='SIDE'; power=0; powerDir=1; aim=0; aimDir=1; result=null; anim=0;
+}
+
+// ---------- update ----------
+function update(){
+  if(state==='POWER'){ power+=0.018*powerDir; if(power>=1){power=1;powerDir=-1;} if(power<=0){power=0;powerDir=1;} }
+  if(state==='AIM'){ aim+=0.022*aimDir; if(aim>=1){aim=1;aimDir=-1;} if(aim<=0){aim=0;aimDir=1;} }
+  if(state==='RESULT'||state==='GAMEOVER') anim++;
+}
+
+// ---------- draw ----------
+function drawFace(shake){
+  const cx=W/2 + shake, cy=H*0.42;
+  // pescoço
+  ctx.fillStyle='#d8a87f'; ctx.fillRect(cx-22,cy+70,44,40);
+  // cabeça
+  ctx.fillStyle=css('--skin');
+  ctx.beginPath(); ctx.ellipse(cx,cy,80,95,0,0,Math.PI*2); ctx.fill();
+  // orelhas
+  ctx.beginPath(); ctx.ellipse(cx-80,cy,12,20,0,0,Math.PI*2);
+  ctx.ellipse(cx+80,cy,12,20,0,0,Math.PI*2); ctx.fill();
+  // cabelo
+  ctx.fillStyle='#3a2414';
+  ctx.beginPath(); ctx.ellipse(cx,cy-55,82,48,0,Math.PI,0); ctx.fill();
+  // olhos (fecha no impacto)
+  const closed = state==='RESULT'&&anim<18;
+  ctx.fillStyle='#222';
+  if(closed){
+    ctx.fillRect(cx-42,cy-12,30,4); ctx.fillRect(cx+12,cy-12,30,4);
+  } else {
+    ctx.beginPath(); ctx.arc(cx-28,cy-10,7,0,Math.PI*2); ctx.arc(cx+28,cy-10,7,0,Math.PI*2); ctx.fill();
+  }
+  // nariz
+  ctx.strokeStyle='#c98f63'; ctx.lineWidth=4; ctx.beginPath();
+  ctx.moveTo(cx,cy-2); ctx.lineTo(cx-8,cy+24); ctx.lineTo(cx+6,cy+26); ctx.stroke();
+  // boca (reage)
+  ctx.strokeStyle='#a8453a'; ctx.lineWidth=5; ctx.beginPath();
+  if(state==='RESULT'&&result&&result.precision>0.6){ ctx.arc(cx,cy+58,22,0.15*Math.PI,0.85*Math.PI);} 
+  else { ctx.moveTo(cx-20,cy+52); ctx.lineTo(cx+20,cy+52);} 
+  ctx.stroke();
+  // marca vermelha do tapa
+  if(state==='RESULT'&&result){
+    const mx = side==='left'? cx-46 : cx+46;
+    ctx.fillStyle='rgba(214,64,44,'+Math.max(0,0.6-anim*0.01)+')';
+    ctx.beginPath(); ctx.arc(mx,cy+18,26,0,Math.PI*2); ctx.fill();
+  }
+  return {cx,cy};
+}
+
+function drawHand(face){
+  if(!(state==='RESULT'&&anim<14)) {
+    // mão pronta ao lado escolhido (pré-tapa)
+    if(state==='SIDE'||state==='POWER'||state==='AIM'){
+      const hx = side==='left'? face.cx-150 : face.cx+150;
+      ctx.fillStyle=css('--skin');
+      ctx.beginPath(); ctx.ellipse(hx,face.cy+10,26,34,0,0,Math.PI*2); ctx.fill();
+    }
+    return;
+  }
+  // animação do impacto
+  const t=anim/14;
+  const from = side==='left'? face.cx-150 : face.cx+150;
+  const to   = side==='left'? face.cx-50  : face.cx+50;
+  const hx = from + (to-from)*t;
+  ctx.fillStyle=css('--skin');
+  ctx.beginPath(); ctx.ellipse(hx,face.cy+10,28,36,0,0,Math.PI*2); ctx.fill();
+}
+
+function meter(x,y,w,h,val,zoneLo,zoneHi,label){
+  ctx.fillStyle='#000'; ctx.fillRect(x-2,y-2,w+4,h+4);
+  ctx.fillStyle='#2a1810'; ctx.fillRect(x,y,w,h);
+  if(zoneLo!=null){ ctx.fillStyle='rgba(201,150,46,.5)'; ctx.fillRect(x+w*zoneLo,y,w*(zoneHi-zoneLo),h); }
+  // marcador
+  ctx.fillStyle=css('--accent'); ctx.fillRect(x+w*val-3,y-4,6,h+8);
+  ctx.fillStyle=css('--hud'); ctx.font='12px Courier New'; ctx.textAlign='left';
+  ctx.fillText(label,x,y-8);
+}
+
+function draw(){
+  ctx.fillStyle='#160d07'; ctx.fillRect(0,0,W,H);
+  // ringue
+  ctx.strokeStyle='#3a2414'; ctx.lineWidth=8; ctx.strokeRect(20,20,W-40,H-40);
+
+  // HUD topo
+  ctx.fillStyle=css('--hud'); ctx.font='bold 16px Courier New'; ctx.textAlign='left';
+  ctx.fillText('TAPA '+Math.min(shot,MAX_SHOTS)+' / '+MAX_SHOTS, 36, 48);
+  ctx.textAlign='right'; ctx.fillText('TOTAL: '+totalScore, W-36, 48);
+  ctx.textAlign='center'; ctx.fillStyle=css('--accent');
+  ctx.fillText('LADO: '+(side==='left'?'◀ ESQUERDA':'DIREITA ▶'), W/2, 48);
+
+  const shake = (state==='RESULT'&&anim<20&&result)? Math.sin(anim)* (result.score/120) : 0;
+  const face=drawFace(shake);
+  drawHand(face);
+
+  // instruções/medidores por estado
+  ctx.textAlign='center'; ctx.font='14px Courier New'; ctx.fillStyle=css('--hud');
+  if(state==='SIDE'){
+    ctx.fillText('← → escolha o lado · ESPAÇO para armar', W/2, H-40);
+  } else if(state==='POWER'){
+    meter(W/2-180,H-70,360,22,power,0.85,1.0,'POTÊNCIA — trave no máximo (ESPAÇO)');
+  } else if(state==='AIM'){
+    meter(W/2-180,H-70,360,22,aim,0.42,0.58,'MIRA — pare no centro dourado (ESPAÇO)');
+  } else if(state==='RESULT'&&result){
+    ctx.font='bold 26px Courier New'; ctx.fillStyle=css('--accent');
+    ctx.fillText(result.grade, W/2, H-92);
+    ctx.font='15px Courier New'; ctx.fillStyle=css('--hud');
+    ctx.fillText('Potência '+Math.round(result.p*100)+'% · Precisão '+Math.round(result.precision*100)+'% · Sorte '+result.luck.toFixed(2), W/2, H-66);
+    ctx.fillText('+'+result.score+' pts · voou '+result.distance+' m', W/2, H-44);
+    ctx.fillStyle=css('--mid'); ctx.fillText('ESPAÇO para o próximo tapa', W/2, H-22);
+  } else if(state==='GAMEOVER'){
+    ctx.fillStyle='rgba(0,0,0,.65)'; ctx.fillRect(0,0,W,H);
+    ctx.fillStyle=css('--hud'); ctx.font='bold 40px Courier New';
+    ctx.fillText('FIM DO CAMPEONATO', W/2, H/2-20);
+    ctx.font='bold 30px Courier New'; ctx.fillStyle=css('--accent');
+    ctx.fillText(totalScore+' pontos', W/2, H/2+24);
+    ctx.font='15px Courier New'; ctx.fillStyle=css('--hud');
+    ctx.fillText('Pressione R para jogar de novo', W/2, H/2+60);
+  }
+}
+
+function loop(){ update(); draw(); requestAnimationFrame(loop); }
+loop();
+</script>
+</body>
+</html>

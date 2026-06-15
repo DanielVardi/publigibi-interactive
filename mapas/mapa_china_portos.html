@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mapa-Múndi — Portos China</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="page-wrapper">
+        <aside class="legenda-panel">
+            <h3>Legenda</h3>
+            <div class="legenda">
+                <div class="legenda-item">
+                    <svg width="13" height="13"><circle cx="6.5" cy="6.5" r="5.5" fill="#FF3333"/></svg>
+                    Controle maioritário
+                </div>
+                <div class="legenda-item">
+                    <svg width="13" height="13"><circle cx="6.5" cy="6.5" r="5.5" fill="#FF8800"/></svg>
+                    Participação parcial
+                </div>
+                <div class="legenda-item">
+                    <svg width="13" height="13"><circle cx="6.5" cy="6.5" r="5.5" fill="#FFD700"/></svg>
+                    Concessão / Arrendamento
+                </div>
+                <div class="legenda-item">
+                    <svg width="13" height="13"><circle cx="6.5" cy="6.5" r="5.5" fill="#33AAFF"/></svg>
+                    Parceria / Interesse
+                </div>
+            </div>
+        </aside>
+        <div class="main-panel">
+            <h1>Portos com Participação Chinesa</h1>
+            <div id="info-painel">Clique em um porto ou país para ver detalhes.</div>
+            <div class="svg-wrapper">
+                <svg id="mapa-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1008 651" preserveAspectRatio="xMidYMid meet"></svg>
+                <div class="zoom-controls">
+                    <button onclick="zoomIn()">+</button>
+                    <button onclick="resetZoom()" title="Resetar zoom">⊙</button>
+                    <button onclick="zoomOut()">−</button>
+                </div>
+            </div>
+        </div>
+        <aside class="sidebar">
+            <h3>Mapas</h3>
+            <nav>
+                <a href="index.html">Preto e Branco</a>
+                <a href="mapa_terras_raras.html">Terras Raras</a>
+                <a href="mapa_datacenters.html">Data Centers de IA</a>
+                <a href="mapa_vdem.html">Regimes V-Dem 2025</a>
+                <a href="mapa_canada_mineracao.html">Mineração — Canadá</a>
+                <a href="mapa_china_portos.html" class="ativo">Portos — China</a>
+            </nav>
+        </aside>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+    <script src="https://cdn.jsdelivr.net/npm/topojson-client@3"></script>
+    <script src="nomes_paises.js"></script>
+    <script src="mapa_china_portos.js"></script>
+</body>
+</html>

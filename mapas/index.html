@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mapa-Múndi — Preto e Branco</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="page-wrapper">
+        <aside class="legenda-panel">
+            <h3>Legenda</h3>
+            <div class="legenda">
+                <div class="legenda-item">
+                    <div class="legenda-cor" style="background:#fff;border:1px solid #333"></div>
+                    País
+                </div>
+                <div class="legenda-item">
+                    <div class="legenda-cor" style="background:#888;border:1px solid #aaa"></div>
+                    Selecionado
+                </div>
+                <div class="legenda-item">
+                    <div class="legenda-cor" style="background:#000;border:1px solid #333"></div>
+                    Oceano
+                </div>
+            </div>
+        </aside>
+        <div class="main-panel">
+            <h1>Mapa-Múndi Interativo</h1>
+            <div id="info-painel">Clique em um país para ver o nome.</div>
+            <div class="svg-wrapper">
+                <svg id="mapa-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1008 651" preserveAspectRatio="xMidYMid meet"></svg>
+                <div class="zoom-controls">
+                    <button onclick="zoomIn()">+</button>
+                    <button onclick="resetZoom()" title="Resetar zoom">⊙</button>
+                    <button onclick="zoomOut()">−</button>
+                </div>
+            </div>
+        </div>
+        <aside class="sidebar">
+            <h3>Mapas</h3>
+            <nav>
+                <a href="index.html" class="ativo">Preto e Branco</a>
+                <a href="mapa_terras_raras.html">Terras Raras</a>
+                <a href="mapa_datacenters.html">Data Centers de IA</a>
+                <a href="mapa_vdem.html">Regimes V-Dem 2025</a>
+                <a href="mapa_canada_mineracao.html">Mineração — Canadá</a>
+                <a href="mapa_china_portos.html">Portos — China</a>
+            </nav>
+        </aside>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+    <script src="https://cdn.jsdelivr.net/npm/topojson-client@3"></script>
+    <script src="nomes_paises.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

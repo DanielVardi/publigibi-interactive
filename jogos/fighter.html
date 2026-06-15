@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Publigibi Fighter — Protótipo</title>
+<style>
+  :root{
+    --bg:#0a0710; --hud:#f4e9c1; --p1:#3aa6ff; --p2:#ff5a4d;
+    --hpgood:#5dd45d; --hpmid:#e8c33a; --hplow:#d6402c; --special:#b46bff;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:var(--bg);color:var(--hud);min-height:100vh;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    font-family:"Courier New",monospace;padding:16px;gap:14px;
+  }
+  h1{font-size:18px;letter-spacing:.3em;text-transform:uppercase;opacity:.8}
+  #stage{
+    width:100%;max-width:900px;aspect-ratio:16/9;
+    border:3px solid #2a1f3a;border-radius:8px;
+    image-rendering:pixelated;background:#000;display:block;
+  }
+  .controls{
+    max-width:900px;width:100%;font-size:12px;line-height:1.7;
+    color:#9a8fb0;border:1px solid #221833;border-radius:6px;padding:14px 18px;
+    background:#0e0a18;
+  }
+  .controls b{color:var(--hud)}
+  .controls .col{display:inline-block;min-width:260px;vertical-align:top;margin-right:24px}
+  .restart{
+    background:#2a1f3a;color:var(--hud);border:1px solid #4a3a66;border-radius:5px;
+    padding:9px 18px;font-family:inherit;font-size:13px;cursor:pointer;letter-spacing:.1em;
+  }
+  .restart:hover{background:#3a2a52}
+</style>
+</head>
+<body>
+  <h1>Publigibi Fighter — protótipo</h1>
+  <canvas id="stage" width="900" height="506"></canvas>
+  <button class="restart" id="restart">Reiniciar luta (R)</button>
+  <div class="controls">
+    <span class="col">
+      <b>Movimento</b><br>
+      ← / → : recuar · avançar<br>
+      ↑ : saltar (cima)<br>
+      → + ↑ : saltar à frente<br>
+      ← + ↑ : saltar atrás<br>
+      ↓ : agachar<br>
+      Segurar para trás : defender
+    </span>
+    <span class="col">
+      <b>Socos</b><br>
+      A : soco fraco/rápido<br>
+      S : soco médio<br>
+      D : soco forte
+    </span>
+    <span class="col">
+      <b>Chutes</b><br>
+      Z : chute fraco · X : médio · C : forte<br>
+      <b>Especial</b><br>
+      Espaço : golpe especial<br>
+      <span style="color:#6f6488">Defesa funciona em pé e agachado.<br>Não há defesa no ar (regra SF2).</span>
+    </span>
+  </div>
+
+<script>
+const cv = document.getElementById('stage');
+const ctx = cv.getContext('2d');
+const W = cv.width, H = cv.height;
+const FLOOR = H - 70;
+
+// ---- Definição de golpes: alcance, dano, duração (frames), recuperação ----
+const MOVES = {
+  punchL:  {reach:62, dmg:4,  startup:3, active:4,  recover:6,  push:3,  kind:'punch'},
+  punchM:  {reach:70, dmg:7,  startup:5, active:5,  recover:10, push:5,  kind:'punch'},
+  punchH:  {reach:78, dmg:11, startup:8, active:6,  recover:16, push:8,  kind:'punch'},
+  kickL:   {reach:74, dmg:5,  startup:4, active:5,  recover:8,  push:4,  kind:'kick'},
+  kickM:   {reach:84, dmg:8,  startup:6, active:6,  recover:12, push:6,  kind:'kick'},
+  kickH:   {reach:96, dmg:13, startup:9, active:7,  recover:18, push:10, kind:'kick'},
+  special: {reach:120,dmg:18, startup:10,active:10, recover:24, push:14, kind:'special'},
+};
+
+function makeFighter(x, color, facing, name){
+  return {
+    x, y:FLOOR, vx:0, vy:0, w:48, h:96, color, facing, name,
+    hp:100, maxhp:100,
+    onGround:true, crouch:false, blocking:false,
+    attack:null, atkTimer:0, atkPhase:'', hitDone:false,
+    hitstun:0, flash:0,
+  };
+}
+
+let p1, p2, gameOver;
+function reset(){
+  p1 = makeFighter(W*0.30, getCss('--p1'), 1, 'VOCÊ');
+  p2 = makeFighter(W*0.70, getCss('--p2'), -1, 'CPU');
+  gameOver = null;
+}
+function getCss(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
+
+// ---- Input ----
+const keys = {};
+window.addEventListener('keydown', e=>{
+  if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown',' '].includes(e.key)) e.preventDefault();
+  if(e.key.toLowerCase()==='r'){reset();return;}
+  keys[e.key.toLowerCase()] = true;
+});
+window.addEventListener('keyup', e=>{ keys[e.key.toLowerCase()] = false; });
+document.getElementById('restart').onclick = reset;
+
+const GRAV = 1.1, JUMP_V = -18, SPEED = 4.2;
+
+function tryStartAttack(f, move){
+  if(f.attack || f.hitstun>0 || !f.onGround) return;
+  f.attack = move;
+  const m = MOVES[move];
+  f.atkTimer = m.startup + m.active + m.recover;
+  f.atkPhase = 'startup';
+  f.hitDone = false;
+}
+
+function handlePlayerInput(){
+  if(gameOver) return;
+  const f = p1;
+  if(f.hitstun>0) return;
+
+  // defesa: segurar direção oposta ao inimigo
+  const awayFromEnemy = (p2.x > f.x) ? keys['arrowleft'] : keys['arrowright'];
+  f.crouch = keys['arrowdown'] && f.onGround;
+  f.blocking = awayFromEnemy && f.onGround && !f.attack;
+
+  if(!f.attack){
+    // pulos
+    if(keys['arrowup'] && f.onGround){
+      f.vy = JUMP_V; f.onGround=false;
+      f.vx = keys['arrowright']?SPEED: keys['arrowleft']?-SPEED:0;
+    } else if(f.onGround && !f.crouch){
+      if(keys['arrowright']) f.vx = SPEED;
+      else if(keys['arrowleft']) f.vx = -SPEED;
+      else f.vx = 0;
+    } else if(f.onGround){ f.vx = 0; }
+
+    // ataques
+    if(keys['a']) tryStartAttack(f,'punchL');
+    else if(keys['s']) tryStartAttack(f,'punchM');
+    else if(keys['d']) tryStartAttack(f,'punchH');
+    else if(keys['z']) tryStartAttack(f,'kickL');
+    else if(keys['x']) tryStartAttack(f,'kickM');
+    else if(keys['c']) tryStartAttack(f,'kickH');
+    else if(keys[' ']) tryStartAttack(f,'special');
+  }
+}
+
+// ---- CPU simples: aproxima, ataca em alcance, recua/defende às vezes ----
+let cpuCooldown = 0;
+function handleCPU(){
+  if(gameOver) return;
+  const f = p2, t = p1;
+  if(f.hitstun>0){ f.vx=0; return; }
+  const dist = Math.abs(f.x - t.x);
+  f.crouch = false; f.blocking = false;
+
+  if(cpuCooldown>0) cpuCooldown--;
+
+  if(!f.attack && f.onGround){
+    // defende se o jogador está atacando perto
+    if(t.attack && dist < 110 && Math.random()<0.6){
+      f.blocking = true; f.vx = 0; return;
+    }
+    if(dist > 100){
+      f.vx = (t.x > f.x ? SPEED : -SPEED) * 0.85; // aproxima
+    } else {
+      f.vx = 0;
+      if(cpuCooldown===0){
+        const r = Math.random();
+        if(r<0.18) tryStartAttack(f,'special');
+        else if(r<0.45) tryStartAttack(f, Math.random()<0.5?'punchM':'kickM');
+        else if(r<0.7) tryStartAttack(f, Math.random()<0.5?'punchL':'kickL');
+        else if(r<0.82) tryStartAttack(f,'kickH');
+        else f.vx = -(t.x>f.x?SPEED:-SPEED)*0.7; // recua
+        cpuCooldown = 18 + Math.floor(Math.random()*22);
+      }
+    }
+  }
+}
+
+function updateFighter(f, foe){
+  // facing sempre para o oponente (no chão)
+  if(f.onGround && !f.attack) f.facing = foe.x >= f.x ? 1 : -1;
+
+  // física
+  f.x += f.vx;
+  if(!f.onGround){
+    f.vy += GRAV; f.y += f.vy;
+    if(f.y >= FLOOR){ f.y = FLOOR; f.vy = 0; f.onGround = true; f.vx = 0; }
+  }
+  // limites de tela
+  f.x = Math.max(40, Math.min(W-40, f.x));
+
+  if(f.hitstun>0) f.hitstun--;
+  if(f.flash>0) f.flash--;
+
+  // progressão do ataque
+  if(f.attack){
+    const m = MOVES[f.attack];
+    f.atkTimer--;
+    const total = m.startup+m.active+m.recover;
+    const elapsed = total - f.atkTimer;
+    if(elapsed < m.startup) f.atkPhase='startup';
+    else if(elapsed < m.startup+m.active) f.atkPhase='active';
+    else f.atkPhase='recover';
+
+    // checa acerto na fase ativa
+    if(f.atkPhase==='active' && !f.hitDone){
+      const hitX = f.x + f.facing*(f.w/2 + m.reach/2);
+      const dx = Math.abs(hitX - foe.x);
+      if(dx < m.reach/2 + foe.w/2 && Math.abs(f.y-foe.y)<90){
+        f.hitDone = true;
+        applyHit(f, foe, m);
+      }
+    }
+    if(f.atkTimer<=0){ f.attack=null; f.atkPhase=''; }
+  }
+}
+
+function applyHit(att, def, m){
+  const blocked = def.blocking && def.onGround;
+  let dmg = blocked ? Math.ceil(m.dmg*0.18) : m.dmg;
+  def.hp = Math.max(0, def.hp - dmg);
+  def.hitstun = blocked ? 6 : (m.startup+4);
+  def.x += att.facing * (blocked ? m.push*0.5 : m.push);
+  def.flash = blocked ? 4 : 8;
+  if(def.hp<=0 && !gameOver){
+    gameOver = (def===p1) ? 'CPU VENCEU' : 'VOCÊ VENCEU';
+  }
+}
+
+// ---- Render ----
+function drawBackground(){
+  const g = ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#1a1030'); g.addColorStop(0.6,'#2a1840'); g.addColorStop(1,'#120a1e');
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+  // chão
+  ctx.fillStyle='#241a38'; ctx.fillRect(0,FLOOR+ (96/2),W,H);
+  ctx.fillStyle='#3a2a55'; ctx.fillRect(0,FLOOR+48,W,6);
+}
+
+function drawFighter(f){
+  const dir = f.facing;
+  const bodyH = f.crouch ? f.h*0.6 : f.h;
+  const topY = f.y - bodyH;
+  ctx.save();
+  if(f.flash>0){ ctx.globalAlpha = 0.6; }
+  // corpo
+  ctx.fillStyle = f.color;
+  ctx.fillRect(f.x - f.w/2, topY, f.w, bodyH);
+  // cabeça
+  ctx.fillStyle = '#f0d9b5';
+  ctx.fillRect(f.x - 14, topY-26, 28, 26);
+  // cinto/detalhe
+  ctx.fillStyle = 'rgba(0,0,0,.25)';
+  ctx.fillRect(f.x - f.w/2, topY + bodyH*0.55, f.w, 8);
+
+  // braço de ataque
+  if(f.attack){
+    const m = MOVES[f.attack];
+    const armY = f.crouch ? topY+bodyH*0.45 : topY+bodyH*0.30;
+    const ext = f.atkPhase==='active' ? m.reach : m.reach*0.5;
+    if(m.kind==='kick'){
+      ctx.fillStyle = '#e8c33a';
+      ctx.fillRect(f.x + (dir>0?0:-ext), topY+bodyH*0.62, ext, 14);
+    } else if(m.kind==='special'){
+      ctx.fillStyle = getCss('--special');
+      const r = f.atkPhase==='active'? 22:12;
+      ctx.beginPath();
+      ctx.arc(f.x + dir*(f.w/2+ext), armY, r, 0, Math.PI*2);
+      ctx.fill();
+    } else {
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(f.x + (dir>0?0:-ext), armY, ext, 12);
+    }
+  }
+  // indicador de defesa
+  if(f.blocking){
+    ctx.strokeStyle = '#7fd6ff'; ctx.lineWidth=3;
+    ctx.strokeRect(f.x - f.w/2 -5, topY-5, f.w+10, bodyH+10);
+  }
+  ctx.restore();
+}
+
+function drawHUD(){
+  // barras de vida
+  bar(30, 24, p1, false);
+  bar(W-30-360, 24, p2, true);
+  ctx.fillStyle = getCss('--hud');
+  ctx.font = 'bold 14px Courier New';
+  ctx.textAlign='left';  ctx.fillText('VOCÊ', 30, 64);
+  ctx.textAlign='right'; ctx.fillText('CPU', W-30, 64);
+
+  if(gameOver){
+    ctx.fillStyle='rgba(0,0,0,.6)'; ctx.fillRect(0,0,W,H);
+    ctx.fillStyle = getCss('--hud');
+    ctx.textAlign='center';
+    ctx.font='bold 46px Courier New';
+    ctx.fillText(gameOver, W/2, H/2);
+    ctx.font='16px Courier New';
+    ctx.fillText('Pressione R para reiniciar', W/2, H/2+40);
+  }
+}
+function bar(x,y,f,mirror){
+  const w=360,h=22;
+  ctx.fillStyle='#000'; ctx.fillRect(x-2,y-2,w+4,h+4);
+  ctx.fillStyle='#3a2a40'; ctx.fillRect(x,y,w,h);
+  const pct=f.hp/f.maxhp;
+  ctx.fillStyle = pct>0.5?getCss('--hpgood'):pct>0.25?getCss('--hpmid'):getCss('--hplow');
+  const fw=w*pct;
+  ctx.fillRect(mirror? x+(w-fw):x, y, fw, h);
+}
+
+function loop(){
+  handlePlayerInput();
+  handleCPU();
+  updateFighter(p1,p2);
+  updateFighter(p2,p1);
+  drawBackground();
+  drawFighter(p2);
+  drawFighter(p1);
+  drawHUD();
+  requestAnimationFrame(loop);
+}
+reset();
+loop();
+</script>
+</body>
+</html>
